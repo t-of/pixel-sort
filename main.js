@@ -242,6 +242,7 @@ playBtn.addEventListener('click', playAnim);
 
 saveBtn.addEventListener('click', () => {
   tone(880);
+  if (animFrame) { stopAnim(); render(); }   // 再生中は小さいアニメの絵ではなく、本来の結果を保存する
   outCanvas.toBlob((blob) => {
     if (!blob) return;
     const a = document.createElement('a');
