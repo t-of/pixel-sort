@@ -49,7 +49,7 @@ function tone(freq) {
 
 const $ = (id) => document.getElementById(id);
 const drop = $('drop'), file = $('file'), controls = $('controls'), canvases = $('canvases');
-const srcCanvas = $('src'), outCanvas = $('out');
+const srcCanvas = $('src'), outCanvas = $('out'), animStage = $('animStage');
 const ruleSelect = $('rule'), orderSelect = $('order'), saveBtn = $('save'), playBtn = $('play');
 
 const MAX_SIDE = 1024;   // 長辺をこの大きさまで縮めてから処理する
@@ -134,6 +134,7 @@ function stopAnim() {
   if (animFrame) cancelAnimationFrame(animFrame);
   animFrame = null;
   outCanvas.classList.remove('animating');
+  canvases.classList.remove('anim-active');
 }
 
 function playAnim() {
@@ -158,8 +159,11 @@ function playAnim() {
   tctx.drawImage(srcCanvas, 0, 0, w, h);
   const small = tctx.getImageData(0, 0, w, h);
 
+  // 元画像（左）と結果（右）を 1 枚の舞台に並べ、ピクセルは左の元の位置から右の並び替え後の位置へ飛ぶ
   const order_ = computeOrder(small, rule, order);
   const n = w * h;
+  const gap = Math.max(4, Math.round(w * 0.06));
+  const stageW = w * 2 + gap, stageH = h;
   const fromX = new Float32Array(n), fromY = new Float32Array(n);
   const toX = new Float32Array(n), toY = new Float32Array(n);
   const colR = new Uint8ClampedArray(n), colG = new Uint8ClampedArray(n);
@@ -167,34 +171,38 @@ function playAnim() {
   for (let i = 0; i < n; i++) {
     const from = order_[i];
     fromX[i] = from % w; fromY[i] = (from / w) | 0;
-    toX[i] = i % w; toY[i] = (i / w) | 0;
+    toX[i] = (i % w) + w + gap; toY[i] = (i / w) | 0;
     const o = from * 4;
     colR[i] = small.data[o]; colG[i] = small.data[o + 1]; colB[i] = small.data[o + 2]; colA[i] = small.data[o + 3];
   }
 
-  outCanvas.width = w;
-  outCanvas.height = h;
-  outCanvas.classList.add('animating');
-  const buf = new Uint8ClampedArray(w * h * 4);
-  const outCtx = outCanvas.getContext('2d');
+  animStage.width = stageW;
+  animStage.height = stageH;
+  canvases.classList.add('anim-active');
+  const buf = new Uint8ClampedArray(stageW * stageH * 4);
+  const stageCtx = animStage.getContext('2d');
   const t0 = performance.now();
+  const FLIGHT = 0.3;   // 1 匹あたりの移動にかける時間（全体に対する割合）
+  const SPREAD = 1 - FLIGHT;   // 出発する時刻をこの割合にずらして広げる
 
   function frame(now) {
     if (myToken !== animToken) return;   // 別の再生・変更が割り込んだので、このループは終わり
     const t = Math.min(1, (now - t0) / ANIM_MS);
-    const e = easeInOut(t);
     buf.fill(0);   // 透明に消す
     for (let i = 0; i < n; i++) {
+      const start = (i / n) * SPREAD;
+      const p = Math.min(1, Math.max(0, (t - start) / FLIGHT));
+      const e = easeInOut(p);
       const x = Math.round(fromX[i] + (toX[i] - fromX[i]) * e);
       const y = Math.round(fromY[i] + (toY[i] - fromY[i]) * e);
-      const o = (y * w + x) * 4;
+      const o = (y * stageW + x) * 4;
       buf[o] = colR[i]; buf[o + 1] = colG[i]; buf[o + 2] = colB[i]; buf[o + 3] = colA[i];
     }
-    outCtx.putImageData(new ImageData(buf, w, h), 0, 0);
+    stageCtx.putImageData(new ImageData(buf, stageW, stageH), 0, 0);
     if (t < 1) {
       animFrame = requestAnimationFrame(frame);
     } else {
-      outCanvas.classList.remove('animating');
+      canvases.classList.remove('anim-active');
       animFrame = null;
       render();   // 終わったら本来の解像度の結果に戻す
     }

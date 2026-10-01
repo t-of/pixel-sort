@@ -105,3 +105,16 @@ select { font: inherit; color: inherit; background: rgba(255, 255, 255, 0.08); b
   background: #000;
 }
 .canvases canvas.animating { image-rendering: pixelated; }
+
+/* 再生中は元画像と結果を 1 枚の舞台にまとめ、左から右へピクセルが飛ぶ */
+.anim-stage {
+  display: none;
+  width: 100%;
+  max-width: 880px;
+  height: auto;
+  border-radius: 8px;
+  background: #000;
+  image-rendering: pixelated;
+}
+.canvases.anim-active figure { display: none; }
+.canvases.anim-active .anim-stage { display: block; }
