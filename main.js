@@ -50,9 +50,11 @@ function tone(freq) {
 const $ = (id) => document.getElementById(id);
 const drop = $('drop'), file = $('file'), controls = $('controls'), canvases = $('canvases');
 const srcCanvas = $('src'), outCanvas = $('out');
-const ruleSelect = $('rule'), orderSelect = $('order'), saveBtn = $('save');
+const ruleSelect = $('rule'), orderSelect = $('order'), saveBtn = $('save'), playBtn = $('play');
 
 const MAX_SIDE = 1024;   // 長辺をこの大きさまで縮めてから処理する
+const MAX_ANIM_SIDE = 256;   // 再生アニメはこの大きさで計算する（スマホでも重くならないように）
+const ANIM_MS = 2400;
 
 ruleSelect.value = load('rule', 'sum');
 orderSelect.value = load('order', 'asc');
@@ -81,7 +83,8 @@ function rgbToHue(r, g, b) {
   return h < 0 ? h + 360 : h;
 }
 
-function sortPixels(imageData, rule, order) {
+// order_[i] は「並び替え後の位置 i に来る、元のピクセルの位置」
+function computeOrder(imageData, rule, order) {
   const { data, width, height } = imageData;
   const n = width * height;
   const order_ = new Array(n);
@@ -93,9 +96,14 @@ function sortPixels(imageData, rule, order) {
   }
   order_.sort((a, b) => keys[a] - keys[b]);
   if (order === 'desc') order_.reverse();
+  return order_;
+}
 
+function sortPixels(imageData, rule, order) {
+  const { data, width, height } = imageData;
+  const order_ = computeOrder(imageData, rule, order);
   const out = new Uint8ClampedArray(data.length);
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < order_.length; i++) {
     const from = order_[i] * 4, to = i * 4;
     out[to] = data[from]; out[to + 1] = data[from + 1]; out[to + 2] = data[from + 2]; out[to + 3] = data[from + 3];
   }
@@ -111,6 +119,87 @@ function render() {
   outCanvas.width = result.width;
   outCanvas.height = result.height;
   outCanvas.getContext('2d').putImageData(result, 0, 0);
+}
+
+// ---- 再生（並び替えのアニメーション） ----
+let animFrame = null;
+let animToken = 0;   // 新しい再生・ルール変更が来たら古いループを止めるための合図
+
+function easeInOut(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2;
+}
+
+function stopAnim() {
+  animToken++;
+  if (animFrame) cancelAnimationFrame(animFrame);
+  animFrame = null;
+  outCanvas.classList.remove('animating');
+}
+
+function playAnim() {
+  if (!currentImageData) return;
+  stopAnim();
+  const myToken = animToken;
+  const rule = ruleSelect.value, order = orderSelect.value;
+
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    render();
+    return;
+  }
+
+  // 重くならないように、小さくした画像でアニメ用の移動元・移動先を計算する
+  const { width: W, height: H } = currentImageData;
+  const scale = Math.min(1, MAX_ANIM_SIDE / Math.max(W, H));
+  const w = Math.max(1, Math.round(W * scale));
+  const h = Math.max(1, Math.round(H * scale));
+  const tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  const tctx = tmp.getContext('2d');
+  tctx.drawImage(srcCanvas, 0, 0, w, h);
+  const small = tctx.getImageData(0, 0, w, h);
+
+  const order_ = computeOrder(small, rule, order);
+  const n = w * h;
+  const fromX = new Float32Array(n), fromY = new Float32Array(n);
+  const toX = new Float32Array(n), toY = new Float32Array(n);
+  const colR = new Uint8ClampedArray(n), colG = new Uint8ClampedArray(n);
+  const colB = new Uint8ClampedArray(n), colA = new Uint8ClampedArray(n);
+  for (let i = 0; i < n; i++) {
+    const from = order_[i];
+    fromX[i] = from % w; fromY[i] = (from / w) | 0;
+    toX[i] = i % w; toY[i] = (i / w) | 0;
+    const o = from * 4;
+    colR[i] = small.data[o]; colG[i] = small.data[o + 1]; colB[i] = small.data[o + 2]; colA[i] = small.data[o + 3];
+  }
+
+  outCanvas.width = w;
+  outCanvas.height = h;
+  outCanvas.classList.add('animating');
+  const buf = new Uint8ClampedArray(w * h * 4);
+  const outCtx = outCanvas.getContext('2d');
+  const t0 = performance.now();
+
+  function frame(now) {
+    if (myToken !== animToken) return;   // 別の再生・変更が割り込んだので、このループは終わり
+    const t = Math.min(1, (now - t0) / ANIM_MS);
+    const e = easeInOut(t);
+    buf.fill(0);   // 透明に消す
+    for (let i = 0; i < n; i++) {
+      const x = Math.round(fromX[i] + (toX[i] - fromX[i]) * e);
+      const y = Math.round(fromY[i] + (toY[i] - fromY[i]) * e);
+      const o = (y * w + x) * 4;
+      buf[o] = colR[i]; buf[o + 1] = colG[i]; buf[o + 2] = colB[i]; buf[o + 3] = colA[i];
+    }
+    outCtx.putImageData(new ImageData(buf, w, h), 0, 0);
+    if (t < 1) {
+      animFrame = requestAnimationFrame(frame);
+    } else {
+      outCanvas.classList.remove('animating');
+      animFrame = null;
+      render();   // 終わったら本来の解像度の結果に戻す
+    }
+  }
+  animFrame = requestAnimationFrame(frame);
 }
 
 function loadImage(fileObj) {
@@ -129,6 +218,7 @@ function loadImage(fileObj) {
     currentImageData = ctx.getImageData(0, 0, w, h);
     controls.hidden = false;
     canvases.hidden = false;
+    stopAnim();
     render();
   };
   img.onerror = () => URL.revokeObjectURL(url);
@@ -146,8 +236,9 @@ drop.addEventListener('drop', (e) => {
   if (f) loadImage(f);
 });
 
-ruleSelect.addEventListener('change', render);
-orderSelect.addEventListener('change', render);
+ruleSelect.addEventListener('change', () => { stopAnim(); render(); });
+orderSelect.addEventListener('change', () => { stopAnim(); render(); });
+playBtn.addEventListener('click', playAnim);
 
 saveBtn.addEventListener('click', () => {
   tone(880);
