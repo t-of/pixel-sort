@@ -48,9 +48,15 @@ function tone(freq) {
 // ---- ここからアプリ本体 ----
 
 const $ = (id) => document.getElementById(id);
-const drop = $('drop'), file = $('file'), controls = $('controls'), canvases = $('canvases');
-const srcCanvas = $('src'), outCanvas = $('out'), animStage = $('animStage');
-const ruleSelect = $('rule'), orderSelect = $('order'), saveBtn = $('save'), playBtn = $('play');
+const dropMat = $('dropMat'), fileMat = $('fileMat'), controls = $('controls'), canvases = $('canvases');
+const dropRef = $('dropRef'), fileRef = $('fileRef'), refFigure = $('refFigure');
+const srcCanvas = $('src'), refCanvas = $('ref'), outCanvas = $('out'), animStage = $('animStage');
+const ruleSelect = $('rule'), orderSelect = $('order'), orderLabel = $('orderLabel'), saveBtn = $('save'), playBtn = $('play');
+const mode1 = $('mode1'), mode2 = $('mode2');
+
+function mode() { return mode2.checked ? '2' : '1'; }
+function render() { mode() === '2' ? render2() : render1(); }
+function playAnim() { mode() === '2' ? playAnim2() : playAnim1(); }
 
 const MAX_SIDE = 1024;   // 長辺をこの大きさまで縮めてから処理する
 const MAX_ANIM_SIDE = 256;   // 再生アニメはこの大きさで計算する（スマホでも重くならないように）
@@ -110,7 +116,7 @@ function sortPixels(imageData, rule, order) {
   return new ImageData(out, width, height);
 }
 
-function render() {
+function render1() {
   if (!currentImageData) return;
   const rule = ruleSelect.value, order = orderSelect.value;
   save('rule', rule);
@@ -119,6 +125,59 @@ function render() {
   outCanvas.width = result.width;
   outCanvas.height = result.height;
   outCanvas.getContext('2d').putImageData(result, 0, 0);
+}
+
+// ---- 2 枚モード: 素材のピクセルを、お手本に似た位置へ並べ替える ----
+let matImageData = null, refImageData = null;   // どちらも同じ大きさ（お手本に合わせる）
+let matRawImg = null, refRawImg = null;
+
+// k 番目どうしを組にする（素材の並び orderA[k] の色を、お手本の並び orderB[k] の位置に置く）
+function combineTwo(matData, refData, rule) {
+  const { width, height } = refData;
+  const orderA = computeOrder(matData, rule, 'asc');
+  const orderB = computeOrder(refData, rule, 'asc');
+  const out = new Uint8ClampedArray(matData.data.length);
+  for (let k = 0; k < orderA.length; k++) {
+    const from = orderA[k] * 4, to = orderB[k] * 4;
+    out[to] = matData.data[from]; out[to + 1] = matData.data[from + 1];
+    out[to + 2] = matData.data[from + 2]; out[to + 3] = matData.data[from + 3];
+  }
+  return new ImageData(out, width, height);
+}
+
+function render2() {
+  if (!matImageData || !refImageData) return;
+  const rule = ruleSelect.value;
+  save('rule', rule);
+  const result = combineTwo(matImageData, refImageData, rule);
+  outCanvas.width = result.width;
+  outCanvas.height = result.height;
+  outCanvas.getContext('2d').putImageData(result, 0, 0);
+}
+
+// 両方そろったら、お手本の大きさに合わせて素材を中央切り抜き（cover）で描き直す
+function tryBuildTwo() {
+  if (!matRawImg || !refRawImg) return;
+  const scale = Math.min(1, MAX_SIDE / Math.max(refRawImg.width, refRawImg.height));
+  const w = Math.max(1, Math.round(refRawImg.width * scale));
+  const h = Math.max(1, Math.round(refRawImg.height * scale));
+
+  refCanvas.width = w; refCanvas.height = h;
+  refCanvas.getContext('2d').drawImage(refRawImg, 0, 0, w, h);
+  refImageData = refCanvas.getContext('2d').getImageData(0, 0, w, h);
+
+  srcCanvas.width = w; srcCanvas.height = h;
+  const sctx = srcCanvas.getContext('2d');
+  const s = Math.max(w / matRawImg.width, h / matRawImg.height);
+  const dw = matRawImg.width * s, dh = matRawImg.height * s;
+  sctx.drawImage(matRawImg, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  matImageData = sctx.getImageData(0, 0, w, h);
+
+  controls.hidden = false;
+  canvases.hidden = false;
+  refFigure.hidden = false;
+  stopAnim();
+  render2();
 }
 
 // ---- 再生（並び替えのアニメーション） ----
@@ -137,30 +196,66 @@ function stopAnim() {
   canvases.classList.remove('anim-active');
 }
 
-function playAnim() {
+// 小さくした画像を作る（アニメ計算を重くしないため）
+function shrinkTo(canvas, w, h) {
+  const tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  const tctx = tmp.getContext('2d');
+  tctx.drawImage(canvas, 0, 0, w, h);
+  return tctx.getImageData(0, 0, w, h);
+}
+
+function playAnim1() {
   if (!currentImageData) return;
   stopAnim();
   const myToken = animToken;
   const rule = ruleSelect.value, order = orderSelect.value;
 
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    render();
+    render1();
     return;
   }
 
-  // 重くならないように、小さくした画像でアニメ用の移動元・移動先を計算する
   const { width: W, height: H } = currentImageData;
   const scale = Math.min(1, MAX_ANIM_SIDE / Math.max(W, H));
   const w = Math.max(1, Math.round(W * scale));
   const h = Math.max(1, Math.round(H * scale));
-  const tmp = document.createElement('canvas');
-  tmp.width = w; tmp.height = h;
-  const tctx = tmp.getContext('2d');
-  tctx.drawImage(srcCanvas, 0, 0, w, h);
-  const small = tctx.getImageData(0, 0, w, h);
+  const small = shrinkTo(srcCanvas, w, h);
 
-  // 元画像（左）と結果（右）を 1 枚の舞台に並べ、ピクセルは左の元の位置から右の並び替え後の位置へ飛ぶ
+  // order_[i] は「新しい位置 i に来る、元の位置」。左の元の位置から右の並び替え後の位置 i へ飛ぶ
   const order_ = computeOrder(small, rule, order);
+  const n = w * h;
+  const orderTo = new Int32Array(n);
+  for (let i = 0; i < n; i++) orderTo[i] = i;
+  runFlight(w, h, order_, orderTo, small.data, myToken, render1);
+}
+
+// 2 枚モードの再生: 左は素材の元の位置から、右はお手本に合わせた位置へ飛ぶ
+function playAnim2() {
+  if (!matImageData || !refImageData) return;
+  stopAnim();
+  const myToken = animToken;
+  const rule = ruleSelect.value;
+
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    render2();
+    return;
+  }
+
+  const { width: W, height: H } = matImageData;   // 素材とお手本は同じ大きさ
+  const scale = Math.min(1, MAX_ANIM_SIDE / Math.max(W, H));
+  const w = Math.max(1, Math.round(W * scale));
+  const h = Math.max(1, Math.round(H * scale));
+  const smallMat = shrinkTo(srcCanvas, w, h);
+  const smallRef = shrinkTo(refCanvas, w, h);
+
+  const orderA = computeOrder(smallMat, rule, 'asc');
+  const orderB = computeOrder(smallRef, rule, 'asc');
+  runFlight(w, h, orderA, orderB, smallMat.data, myToken, render2);
+}
+
+// 左（素材）の orderFrom[k] の位置から、右（結果）の orderTo[k] の位置へ、ピクセルを 1 枚ずつ飛ばす
+function runFlight(w, h, orderFrom, orderTo, srcData, myToken, onDone) {
   const n = w * h;
   const gap = Math.max(4, Math.round(w * 0.06));
   const stageW = w * 2 + gap, stageH = h;
@@ -168,12 +263,12 @@ function playAnim() {
   const toX = new Float32Array(n), toY = new Float32Array(n);
   const colR = new Uint8ClampedArray(n), colG = new Uint8ClampedArray(n);
   const colB = new Uint8ClampedArray(n), colA = new Uint8ClampedArray(n);
-  for (let i = 0; i < n; i++) {
-    const from = order_[i];
-    fromX[i] = from % w; fromY[i] = (from / w) | 0;
-    toX[i] = (i % w) + w + gap; toY[i] = (i / w) | 0;
+  for (let k = 0; k < n; k++) {
+    const from = orderFrom[k], to = orderTo[k];
+    fromX[k] = from % w; fromY[k] = (from / w) | 0;
+    toX[k] = (to % w) + w + gap; toY[k] = (to / w) | 0;
     const o = from * 4;
-    colR[i] = small.data[o]; colG[i] = small.data[o + 1]; colB[i] = small.data[o + 2]; colA[i] = small.data[o + 3];
+    colR[k] = srcData[o]; colG[k] = srcData[o + 1]; colB[k] = srcData[o + 2]; colA[k] = srcData[o + 3];
   }
 
   animStage.width = stageW;
@@ -204,13 +299,14 @@ function playAnim() {
     } else {
       canvases.classList.remove('anim-active');
       animFrame = null;
-      render();   // 終わったら本来の解像度の結果に戻す
+      onDone();   // 終わったら本来の解像度の結果に戻す
     }
   }
   animFrame = requestAnimationFrame(frame);
 }
 
-function loadImage(fileObj) {
+// 1 枚モード: 選んだ画像をそのまま縮めて並び替える
+function loadImage1(fileObj) {
   if (!fileObj || !fileObj.type.startsWith('image/')) return;
   const img = new Image();
   const url = URL.createObjectURL(fileObj);
@@ -233,16 +329,57 @@ function loadImage(fileObj) {
   img.src = url;
 }
 
-file.addEventListener('change', () => loadImage(file.files[0]));
+// 2 枚モード: 画像を読み込んで保っておくだけ（大きさを合わせる処理は両方そろってから）
+function loadRaw(fileObj, onReady) {
+  if (!fileObj || !fileObj.type.startsWith('image/')) return;
+  const img = new Image();
+  const url = URL.createObjectURL(fileObj);
+  img.onload = () => { URL.revokeObjectURL(url); onReady(img); };
+  img.onerror = () => URL.revokeObjectURL(url);
+  img.src = url;
+}
 
-drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('dragover'); });
-drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
-drop.addEventListener('drop', (e) => {
-  e.preventDefault();
-  drop.classList.remove('dragover');
-  const f = e.dataTransfer.files && e.dataTransfer.files[0];
-  if (f) loadImage(f);
-});
+function onFileMat(fileObj) {
+  if (mode() === '2') loadRaw(fileObj, (img) => { matRawImg = img; tryBuildTwo(); });
+  else loadImage1(fileObj);
+}
+function onFileRef(fileObj) {
+  loadRaw(fileObj, (img) => { refRawImg = img; tryBuildTwo(); });
+}
+
+function bindDrop(dropEl, onFile) {
+  dropEl.addEventListener('dragover', (e) => { e.preventDefault(); dropEl.classList.add('dragover'); });
+  dropEl.addEventListener('dragleave', () => dropEl.classList.remove('dragover'));
+  dropEl.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropEl.classList.remove('dragover');
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) onFile(f);
+  });
+}
+
+fileMat.addEventListener('change', () => onFileMat(fileMat.files[0]));
+fileRef.addEventListener('change', () => onFileRef(fileRef.files[0]));
+bindDrop(dropMat, onFileMat);
+bindDrop(dropRef, onFileRef);
+
+mode1.addEventListener('change', switchMode);
+mode2.addEventListener('change', switchMode);
+
+// モードを切り替えたら、画像をやり直してもらう（1 枚モードと 2 枚モードは別の素材・結果を持つため）
+function switchMode() {
+  stopAnim();
+  currentImageData = null;
+  matImageData = null; refImageData = null;
+  matRawImg = null; refRawImg = null;
+  fileMat.value = ''; fileRef.value = '';
+  controls.hidden = true;
+  canvases.hidden = true;
+  refFigure.hidden = true;
+  dropRef.hidden = mode() !== '2';
+  orderLabel.hidden = mode() === '2';
+}
+switchMode();
 
 ruleSelect.addEventListener('change', () => { stopAnim(); render(); });
 orderSelect.addEventListener('change', () => { stopAnim(); render(); });

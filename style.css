@@ -56,6 +56,9 @@ select { font: inherit; color: inherit; background: rgba(255, 255, 255, 0.08); b
 .credit a { color: inherit; }
 
 /* ---- pixel-sort 本体 ---- */
+.mode { display: flex; gap: 16px; font-size: 14px; }
+.mode label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
 .drop {
   width: 100%;
   max-width: 480px;

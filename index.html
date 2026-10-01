@@ -41,9 +41,18 @@
     </header>
 
     <section class="stage" id="stage">
-      <div class="drop" id="drop">
+      <div class="mode" id="modeRow">
+        <label><input type="radio" name="mode" value="1" id="mode1" checked> 1 枚</label>
+        <label><input type="radio" name="mode" value="2" id="mode2"> 2 枚</label>
+      </div>
+
+      <div class="drop" id="dropMat">
         <p>画像を選ぶ、またはここにドラッグ＆ドロップ</p>
-        <input type="file" accept="image/*" id="file">
+        <input type="file" accept="image/*" id="fileMat">
+      </div>
+      <div class="drop" id="dropRef" hidden>
+        <p>お手本の画像を選ぶ、またはここにドラッグ＆ドロップ</p>
+        <input type="file" accept="image/*" id="fileRef">
       </div>
 
       <div class="controls" id="controls" hidden>
@@ -57,7 +66,7 @@
             <option value="hue">色相（Hue）</option>
           </select>
         </label>
-        <label>
+        <label id="orderLabel">
           <select id="order">
             <option value="asc">昇順</option>
             <option value="desc">降順</option>
@@ -68,11 +77,15 @@
 
       <div class="canvases" id="canvases" hidden>
         <figure>
-          <figcaption>元の画像</figcaption>
+          <figcaption>素材</figcaption>
           <canvas id="src"></canvas>
         </figure>
+        <figure id="refFigure" hidden>
+          <figcaption>お手本</figcaption>
+          <canvas id="ref"></canvas>
+        </figure>
         <figure>
-          <figcaption>並び替え後</figcaption>
+          <figcaption>結果</figcaption>
           <canvas id="out"></canvas>
           <button class="pill" id="play">再生</button>
         </figure>
