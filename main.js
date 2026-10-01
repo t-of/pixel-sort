@@ -157,6 +157,6 @@ saveBtn.addEventListener('click', () => {
     a.href = URL.createObjectURL(blob);
     a.download = 'pixel-sort.png';
     a.click();
-    URL.revokeObjectURL(a.href);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);   // すぐ消すと Safari で保存できないことがある
   }, 'image/png');
 });
