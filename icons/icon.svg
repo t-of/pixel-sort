@@ -1,1 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#0b0c10"/><text x="256" y="256" dy=".35em" text-anchor="middle" font-family="system-ui,sans-serif" font-weight="700" font-size="280" fill="#eceef3">P</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0b0c10"/>
+  <g>
+    <rect x="76"  y="104" width="130" height="40" fill="#ff6b6b"/>
+    <rect x="206" y="104" width="100" height="40" fill="#ff9b4f"/>
+    <rect x="306" y="104" width="130" height="40" fill="#ffd35c"/>
+
+    <rect x="76"  y="156" width="80"  height="40" fill="#8ff0bf"/>
+    <rect x="156" y="156" width="150" height="40" fill="#5ce0d8"/>
+    <rect x="306" y="156" width="130" height="40" fill="#4fa7e8"/>
+
+    <rect x="76"  y="208" width="170" height="40" fill="#6b8bff"/>
+    <rect x="246" y="208" width="100" height="40" fill="#a06bff"/>
+    <rect x="346" y="208" width="90"  height="40" fill="#ff6bd8"/>
+
+    <rect x="76"  y="260" width="60"  height="40" fill="#ffd35c"/>
+    <rect x="136" y="260" width="140" height="40" fill="#ff6b6b"/>
+    <rect x="276" y="260" width="160" height="40" fill="#8ff0bf"/>
+
+    <rect x="76"  y="312" width="200" height="40" fill="#4fa7e8"/>
+    <rect x="276" y="312" width="80"  height="40" fill="#a06bff"/>
+    <rect x="356" y="312" width="80"  height="40" fill="#ff9b4f"/>
+
+    <rect x="76"  y="364" width="110" height="40" fill="#ff6bd8"/>
+    <rect x="186" y="364" width="130" height="40" fill="#ffd35c"/>
+    <rect x="316" y="364" width="120" height="40" fill="#5ce0d8"/>
+  </g>
+</svg>
